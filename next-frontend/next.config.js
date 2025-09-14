@@ -1,9 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  telemetry: false,
   experimental: {
-    outputStandalone: true,
+    // Remove deprecated outputStandalone option
   },
   transpilePackages: [
     'antd',
