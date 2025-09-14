@@ -1,0 +1,72 @@
+# Dockerfile for pre-built Next.js application
+# Use this when you have already built the frontend locally
+
+FROM node:20-alpine AS runner
+
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Create user and group
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Set working directory
+WORKDIR /app
+
+# Copy pre-built files from dist directory
+# You should build locally first using: ./build-frontend.sh
+COPY dist/frontend/ ./
+
+# Ensure server.js exists (fallback)
+RUN if [ ! -f "server.js" ]; then \
+        echo "Creating server.js fallback..."; \
+        echo "const { createServer } = require('http');" > server.js; \
+        echo "const { parse } = require('url');" >> server.js; \
+        echo "const next = require('next');" >> server.js; \
+        echo "" >> server.js; \
+        echo "const dev = process.env.NODE_ENV !== 'production';" >> server.js; \
+        echo "const hostname = process.env.HOSTNAME || 'localhost';" >> server.js; \
+        echo "const port = process.env.PORT || 3000;" >> server.js; \
+        echo "" >> server.js; \
+        echo "const app = next({ dev, hostname, port });" >> server.js; \
+        echo "const handle = app.getRequestHandler();" >> server.js; \
+        echo "" >> server.js; \
+        echo "app.prepare().then(() => {" >> server.js; \
+        echo "  createServer(async (req, res) => {" >> server.js; \
+        echo "    try {" >> server.js; \
+        echo "      const parsedUrl = parse(req.url, true);" >> server.js; \
+        echo "      await handle(req, res, parsedUrl);" >> server.js; \
+        echo "    } catch (err) {" >> server.js; \
+        echo "      console.error('Error occurred handling', req.url, err);" >> server.js; \
+        echo "      res.statusCode = 500;" >> server.js; \
+        echo "      res.end('internal server error');" >> server.js; \
+        echo "    }" >> server.js; \
+        echo "  }).listen(port, (err) => {" >> server.js; \
+        echo "    if (err) throw err;" >> server.js; \
+        echo "    console.log(\`> Ready on http://\${hostname}:\${port}\`);" >> server.js; \
+        echo "  });" >> server.js; \
+        echo "});" >> server.js; \
+    fi
+
+# Change ownership
+RUN chown -R nextjs:nodejs /app
+USER nextjs
+
+# Expose port
+EXPOSE 3000
+
+# Environment variables
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV production
+ENV NEXT_PUBLIC_APP_ID myapp123
+ENV NEXT_PUBLIC_SERVER_URL https://planktontest01.ddns.net/parse
+ENV NEXT_PUBLIC_JS_KEY myjskey123
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/ || exit 1
+
+# Start the application
+CMD ["node", "server.js"]

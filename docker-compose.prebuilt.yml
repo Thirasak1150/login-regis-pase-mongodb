@@ -1,0 +1,90 @@
+services:
+  next-frontend:
+    build:
+      context: .
+      dockerfile: next-frontend/Dockerfile.prebuilt
+    container_name: kuyton-next-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+    depends_on:
+      - parse-backend
+    networks:
+      - kuyton-network
+    restart: unless-stopped
+
+  parse-backend:
+    build:
+      context: ./parse-backend
+      dockerfile: Dockerfile
+    container_name: kuyton-parse-backend
+    ports:
+      - "1337:1337"
+    environment:
+      - DATABASE_URI=mongodb://kuyton-mongodb:27017/kuyton
+      - APP_ID=kuyton-app
+      - MASTER_KEY=kuyton-master-key-2024
+      - SERVER_URL=http://localhost:1337/parse
+    depends_on:
+      - mongodb
+    networks:
+      - kuyton-network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: kuyton-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - next-frontend
+      - parse-backend
+    networks:
+      - kuyton-network
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7.0
+    container_name: kuyton-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=kuyton-mongo-2024
+      - MONGO_INITDB_DATABASE=kuyton
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - kuyton-network
+    restart: unless-stopped
+
+  mongo-express:
+    image: mongo-express:1.0.2
+    container_name: kuyton-mongo-express
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=admin
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=kuyton-mongo-2024
+      - ME_CONFIG_MONGODB_URL=mongodb://admin:kuyton-mongo-2024@kuyton-mongodb:27017/
+      - ME_CONFIG_BASICAUTH=false
+    depends_on:
+      - mongodb
+    networks:
+      - kuyton-network
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+
+networks:
+  kuyton-network:
+    driver: bridge

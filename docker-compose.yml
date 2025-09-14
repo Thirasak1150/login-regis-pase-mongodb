@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: kuyton-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: myparseapp
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - kuyton-network
+    command: mongod --noauth
+
+  # MongoDB Admin Interface (Optional)
+  mongo-express:
+    image: mongo-express:1.0.2
+    container_name: kuyton-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongodb:27017/
+      ME_CONFIG_BASICAUTH: false
+    depends_on:
+      - mongodb
+    networks:
+      - kuyton-network
+
+  # Parse Backend Server
+  parse-backend:
+    build:
+      context: ./parse-backend
+      dockerfile: Dockerfile
+    container_name: kuyton-parse-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URI: mongodb://mongodb:27017/myparseapp
+      APP_ID: myapp123
+      MASTER_KEY: masterkey123
+      SERVER_URL: http://parse-backend:1337/parse
+      PORT: 1337
+    depends_on:
+      - mongodb
+    networks:
+      - kuyton-network
+    ports:
+      - "1337:1337"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1337/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Next.js Frontend
+  next-frontend:
+    build:
+      context: ./next-frontend
+      dockerfile: Dockerfile
+    container_name: kuyton-next-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_PARSE_SERVER_URL: http://planktontest01:1337/parse
+      NEXT_PUBLIC_PARSE_APP_ID: myapp123
+    depends_on:
+      - parse-backend
+    networks:
+      - kuyton-network
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: kuyton-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - next-frontend
+      - parse-backend
+    networks:
+      - kuyton-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  kuyton-network:
+    driver: bridge
